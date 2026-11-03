@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Unofficial LineageOS 24.0 / Android 17 for Pixel 3 (blueline).
+     Initialize LineageOS/android at lineage-24.0 before loading this manifest.
+     The shared crosshatch tree defines lineage_blueline; no Pixel 3 XL vendor
+     or Pixel 3a/bonito device tree is used for this build. -->
+<manifest>
+  <remote name="pixel3" fetch="https://github.com/" />
+
+  <project name="its-hecker/android_device_google_crosshatch" path="device/google/crosshatch" remote="pixel3" revision="lineage-24.0" />
+  <project name="its-hecker/android_kernel_google_msm-4.9" path="kernel/google/msm-4.9" remote="pixel3" revision="lineage-24.0" />
+  <project name="its-hecker/proprietary_vendor_google_blueline" path="vendor/google/blueline" remote="pixel3" revision="lineage-24.0" />
+  <project name="LineageOS/android_packages_apps_ElmyraService" path="packages/apps/ElmyraService" remote="pixel3" revision="lineage-24.0" />
+
+  <!-- Legacy Qualcomm implementations removed from the Android 17 manifest. -->
+  <project name="xbill9/android_hardware_qcom_sdm845_display" path="hardware/qcom/sdm845/display" remote="pixel3" revision="299e03ac43b03a433346ec7d13fb3444f1f2d57d" upstream="refs/heads/lineage-24.0" groups="qcom,qcom_sdm845" />
+  <project name="LineageOS/android_hardware_qcom_sdm845_gps" path="hardware/qcom/sdm845/gps" remote="pixel3" revision="71438e3fa19861a7fee23ea8a26f1ac6c90c5f85" upstream="refs/heads/lineage-23.2" groups="qcom,qcom_sdm845" />
+  <project name="xbill9/android_hardware_qcom_audio" path="hardware/qcom/audio" remote="pixel3" revision="e2cae171b39b5f642b5192076a7cddcaa80f063a" upstream="refs/heads/lineage-23.2" groups="qcom,qcom_audio,pdk-qcom" />
+
+  <!-- Kernel clang r416183b is already supplied by LineageOS 24.0.
+       Linux 4.9 additionally needs these GNU binutils, including gold for LTO. -->
+  <project name="LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9" path="prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9" remote="pixel3" revision="5e030eafe024784a73cdf47e6936ac0dbfc763dc" upstream="refs/heads/lineage-19.1" clone-depth="1" />
+  <project name="LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9" path="prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9" remote="pixel3" revision="111258a10e017f067b27e6cfcea7619d753f3309" upstream="refs/heads/lineage-19.1" clone-depth="1" />
+
+  <!-- Android 17 compatibility for the backported 4.9 kernel. These forks
+       supply fscrypt keyring, BPF/networking and native app zygote fixes.
+       Pins keep this initial bring-up reproducible; review before updating. -->
+  <remove-project name="LineageOS/android_system_core" />
+  <project name="xbill9/android_system_core" path="system/core" remote="pixel3" revision="5742820aad0e0c23dc295b22b655e986b87a7fc4" upstream="refs/heads/lineage-24.0" groups="pdk" />
+  <remove-project name="LineageOS/android_system_vold" />
+  <project name="xbill9/android_system_vold" path="system/vold" remote="pixel3" revision="fce7dadf6510b8ac728eca0f77672daa582e2bb8" upstream="refs/heads/lineage-24.0" groups="pdk" />
+  <remove-project name="LineageOS/android_system_bpf" />
+  <project name="xbill9/android_system_bpf" path="system/bpf" remote="pixel3" revision="72b37ef9d9dba32ddddcd6bb62970c4cb9f42523" upstream="refs/heads/lineage-24.0" groups="pdk" />
+  <remove-project name="platform/system/zygote" />
+  <project name="xbill9/android_system_zygote" path="system/zygote" remote="pixel3" revision="d6dadb5e56c821e8dd44b13725d9de6e3085c733" upstream="refs/heads/lineage-24.0" groups="pdk" />
+  <remove-project name="LineageOS/android_packages_modules_Connectivity" />
+  <project name="xbill9/android_packages_modules_Connectivity" path="packages/modules/Connectivity" remote="pixel3" revision="5c298deab55ce7cfefec3b1cc9c79e9898f669e7" upstream="refs/heads/lineage-24.0" groups="pdk-cw-fs,pdk-fs" />
+</manifest>
