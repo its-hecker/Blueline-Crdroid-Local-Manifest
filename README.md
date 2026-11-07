@@ -4,8 +4,10 @@ Unofficial, vanilla Android 17 development target for **Google Pixel 3**.
 The existing repository URL retains its old crDroid name; its `main` branch now
 contains the LineageOS configuration.
 
-**Status:** source setup and build tooling. A full Pixel 3 ROM build and a boot
-on the phone have not yet been verified. The Pixel 3 remains officially on
+**Status:** a full ROM build is available, but the 4 November image hangs before
+recovery. Inspection confirmed that its compiled kernel lacks SELinux. The
+recovery fix below restores the missing dependency; a rebuilt image and a
+successful phone boot still need verification. The Pixel 3 remains officially on
 LineageOS 22.2; this is an independent port.
 
 ## Fresh build from mkdir — default jobs, RBE enabled
@@ -53,6 +55,35 @@ To prepare the vendor files without starting a build:
 ```bash
 bash .repo/local_manifests/build.sh --prepare-only
 ```
+
+## Recovery fix — 8 November 2026
+
+The 4 November boot image matches ServerHive's published checksum but its
+embedded kernel configuration has no SELinux support. Disabling the unused
+Smack LSM also removed its implicit selection of `SECURITY_NETWORK`, a dependency
+of SELinux. Kconfig silently dropped `SECURITY_SELINUX=y`, so init cannot mount
+selinuxfs and start recovery.
+
+The kernel's `lineage-24.0` branch now selects `SECURITY_NETWORK` and the SELinux
+default explicitly. The build helper runs `m kernelconfig` and checks the
+generated configuration before compiling the ROM.
+
+For the first rebuild after this fix, clear only the generated kernel and
+device-tree outputs, then build the complete package so its kernel modules match:
+
+```bash
+cd ~/lineageos-blueline &&
+git -C .repo/local_manifests pull --ff-only origin main &&
+repo sync -c --fail-fast --no-clone-bundle --no-tags &&
+rm -rf out/target/product/blueline/obj/KERNEL_OBJ out/target/product/blueline/obj/DTB_OBJ out/target/product/blueline/obj/DTBO_OBJ &&
+rm -f out/target/product/blueline/kernel out/target/product/blueline/boot.img out/target/product/blueline/dtb.img out/target/product/blueline/dtbo.img &&
+env -u HECKER_BUILD_JOBS -u BUILD_JOBS -u LINEAGE_BUILD_JOBS PIXEL3_DEV_USB_ADB=true USE_RBE=true bash .repo/local_manifests/build.sh
+```
+
+Use the newly produced `boot.img` from `out/target/product/blueline/`; the
+4 November download is still the old image. In bootloader mode, flash that new
+image with `fastboot flash boot boot.img`, then select **Recovery Mode**.
+A source/configuration check is not a successful phone boot test.
 
 ## Explicit 8-job command
 
