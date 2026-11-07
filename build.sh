@@ -68,6 +68,9 @@ echo "Build log: $BUILD_LOG"
     # Android's envsetup scripts are not compatible with nounset.
     source build/envsetup.sh
     lunch lineage_blueline cp2a userdebug
+    # Validate the resolved Kconfig before compiling or packaging the kernel.
+    m kernelconfig
+    python3 "$SCRIPT_DIR/scripts/check-kernel-config.py" "$ANDROID_PRODUCT_OUT/obj/KERNEL_OBJ/.config"
     if [[ -n ${LINEAGE_BUILD_JOBS:-} ]]; then
         m bacon "-j${LINEAGE_BUILD_JOBS}"
     else

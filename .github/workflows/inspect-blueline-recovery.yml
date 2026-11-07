@@ -1,199 +1,52 @@
-name: Inspect Pixel 3 recovery artifact
+name: Validate Pixel 3 recovery kernel configuration
 on:
   push:
     branches:
       - diagnostics/blueline-recovery-20261108
 permissions: {}
 jobs:
-  inspect:
+  validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
-      - name: Prepare structural validation
+      - name: Fetch public source revisions
         shell: bash
         run: |
-          python3 -m venv /tmp/blueline-inspect
-          /tmp/blueline-inspect/bin/pip install --quiet --disable-pip-version-check playwright
-          if ! command -v lz4 >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq lz4
-          fi
-      - name: Download and verify public build checksums
+          git init -q /tmp/pixel3-kernel
+          git -C /tmp/pixel3-kernel remote add origin https://github.com/its-hecker/android_kernel_google_msm-4.9.git
+          git -C /tmp/pixel3-kernel fetch --depth=1 origin 89fd02f2a2e463e894b09a2557d65b76e6d84188
+          git -C /tmp/pixel3-kernel checkout --detach FETCH_HEAD
+          git clone --depth=1 --branch diagnostics/blueline-recovery-20261108 https://github.com/its-hecker/Blueline-Crdroid-Local-Manifest.git /tmp/pixel3-manifest
+      - name: Reproduce missing SELinux in the original configuration
         shell: bash
         run: |
-          /tmp/blueline-inspect/bin/python - <<'PY'
-          import hashlib
-          import pathlib
-          import shutil
-          import time
-          from urllib.parse import urlsplit
-          from playwright.sync_api import sync_playwright
-          
-          # Public build artifacts; no image contents or credentials are printed.
-          targets = [
-              ("boot.img", "FwyS2m4N", 67108864, "37b59460278b060aff697488816eb1d203b141ec3ab5d15b529bfc006d235b07"),
-              ("dtbo.img", "tTA2fFaK", 8388608, "ecfc253a3ee1b074441554e7457df644428d7f51806bf79ddafbcab27fb61d4f"),
-              ("vbmeta.img", "rTmHG1lH", 65536, "bba0845d5b255a594fd970215a0320966282d5cbe299422884d2c31cb950669d"),
-          ]
-          links = {}
-          def visit(value):
-              if isinstance(value, dict):
-                  name, link = value.get("name"), value.get("link") or value.get("directLink")
-                  if name in {t[0] for t in targets} and isinstance(link, str) and urlsplit(link).scheme == "https" and urlsplit(link).hostname.endswith(".gofile.io"):
-                      links[name] = link
-                  for child in value.values():
-                      visit(child)
-              elif isinstance(value, list):
-                  for child in value:
-                      visit(child)
-          def on_response(response):
-              if "json" in response.headers.get("content-type", "") and urlsplit(response.url).hostname.endswith(".gofile.io") and "/contents/" in urlsplit(response.url).path:
-                  try:
-                      visit(response.json())
-                  except Exception:
-                      pass
-          with sync_playwright() as p:
-              chrome = shutil.which("google-chrome") or shutil.which("chromium")
-              browser = p.chromium.launch(headless=True, executable_path=chrome, args=["--disable-dev-shm-usage"])
-              context = browser.new_context(accept_downloads=False)
-              page = context.new_page()
-              page.on("response", on_response)
-              for name, content_id, size, sha in targets:
-                  page.goto("https://gofile.io/d/" + content_id, wait_until="domcontentloaded", timeout=60000)
-                  deadline = time.monotonic() + 45
-                  while name not in links and time.monotonic() < deadline:
-                      page.wait_for_timeout(1000)
-                  if name not in links:
-                      raise RuntimeError("Public image download could not be resolved")
-                  response = context.request.get(links[name], timeout=180000)
-                  if response.status != 200:
-                      raise RuntimeError("Public image download failed")
-                  data = response.body()
-                  if len(data) != size or hashlib.sha256(data).hexdigest() != sha:
-                      raise RuntimeError("Image checksum verification failed")
-                  pathlib.Path("/tmp/" + name).write_bytes(data)
-              browser.close()
-          print("PUBLIC_BUILD_CHECKSUMS: PASS")
-          
+          make -s -C /tmp/pixel3-kernel O=/tmp/pixel3-config-before ARCH=arm64 CC=clang HOSTCC=gcc b1c1_defconfig
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path("/tmp/pixel3-config-before/.config").read_text().splitlines()
+          assert "CONFIG_SECURITY_NETWORK=y" not in lines
+          assert "CONFIG_SECURITY_SELINUX=y" not in lines
+          print("Original Kconfig reproduces the missing SELinux dependency.")
           PY
-      - name: Report structural checks only
+          set +e
+          python3 /tmp/pixel3-manifest/scripts/check-kernel-config.py /tmp/pixel3-config-before/.config
+          guard_status=$?
+          set -e
+          test "$guard_status" -eq 1
+      - name: Validate the dependency fix with the kernel's Kconfig resolver
         shell: bash
         run: |
           python3 - <<'PY'
-          import gzip
-          import pathlib
-          import re
-          import struct
-          import subprocess
-          import zlib
-          
-          # This emits fixed diagnostic labels with Boolean PASS/FAIL values only.
-          # It never emits ramdisk files, properties, configuration text, keys, or raw metadata.
-          def check(label, result):
-              print(label + ": " + ("PASS" if result else "FAIL"), flush=True)
-          def align(value, page):
-              return (value + page - 1) // page * page
-          def unpack(data, name):
-              if data[:2] == b"\x1f\x8b":
-                  return gzip.decompress(data)
-              if data[:4] in (b"\x02\x21\x4c\x18", b"\x04\x22\x4d\x18"):
-                  path = pathlib.Path("/tmp/" + name)
-                  path.write_bytes(data)
-                  return subprocess.run(["lz4","-d","-c",str(path)],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=True).stdout
-              return data
-          
-          b = pathlib.Path("/tmp/boot.img").read_bytes()
-          check("ANDROID_BOOT_MAGIC", b[:8] == b"ANDROID!")
-          ks,ka,rs,ra,ss,sa,ta,page,version,osver = struct.unpack_from("<10I",b,8)
-          check("PIXEL3_HEADER_V2", version==2)
-          check("PIXEL3_BOOT_PAGE_4096", page==4096)
-          check("PIXEL3_BOOT_PARTITION_SIZE", len(b)==67108864)
-          assert version==2 and page==4096
-          ko,ro = page,page+align(ks,page)
-          ds=struct.unpack_from("<I",b,1648)[0]
-          rdtbs=struct.unpack_from("<I",b,1632)[0]
-          do=ro+align(rs,page)+align(ss,page)+align(rdtbs,page)
-          cmdline=b[64:576].split(b"\0")[0]+b" "+b[608:1632].split(b"\0")[0]
-          check("RECOVERY_NOT_FORCED_TO_NORMAL_BOOT",b"androidboot.force_normal_boot=1" not in cmdline)
-          check("EARLY_CONSOLE_ENABLED",b"console=ttyMSM0" in cmdline)
-          check("BASE_DTB_PRESENT",ds>0 and b[do:do+4]==b"\xd0\x0d\xfe\xed")
-          check("BASE_DTB_SDM845",b"sdm845" in b[do:do+ds])
-          kc=b[ko:ko+ks]
-          check("KERNEL_LEGACY_LZ4",kc[:4]==b"\x02\x21\x4c\x18")
-          kernel=unpack(kc,"kernel-compressed")
-          check("ARM64_KERNEL_MAGIC",kernel[56:60]==b"ARM\x64")
-          check("KERNEL_4_9",re.search(rb"Linux version 4\.9\.",kernel) is not None)
-          check("EXPECTED_KERNEL_CLANG",b"r416183b" in kernel)
-          marker=kernel.find(b"IKCFG_ST")
-          check("EMBEDDED_CONFIG_PRESENT",marker>=0)
-          config=zlib.decompress(kernel[marker+8:],31).decode() if marker>=0 else ""
-          for symbol in ("BOARD_B1C1","BLK_DEV_INITRD","RD_GZIP","BINFMT_ELF","SECURITY_SELINUX","ADVISE_SYSCALLS","PSTORE","PSTORE_RAM","SECCOMP"):
-              check("KERNEL_"+symbol, ("CONFIG_"+symbol+"=y") in config.splitlines())
-          check("KERNEL_NOT_BONITO","CONFIG_BOARD_BONITO=y" not in config.splitlines())
-          check("DEFAULT_LSM_SELINUX",'CONFIG_DEFAULT_SECURITY="selinux"' in config.splitlines())
-          rc=b[ro:ro+rs]
-          check("RECOVERY_RAMDISK_NONEMPTY",rs>0)
-          check("RAMDISK_SUPPORTED_COMPRESSION",(rc[:2]==b"\x1f\x8b" and "CONFIG_RD_GZIP=y" in config.splitlines()) or (rc[:4] in (b"\x02\x21\x4c\x18",b"\x04\x22\x4d\x18") and "CONFIG_RD_LZ4=y" in config.splitlines()) or rc[:6] in (b"070701",b"070702"))
-          rd=unpack(rc,"ramdisk-compressed")
-          check("RAMDISK_CPIO",rd[:6] in (b"070701",b"070702"))
-          entries={}
-          offset=0
-          while offset+110<=len(rd) and rd[offset:offset+6] in (b"070701",b"070702"):
-              values=[int(rd[offset+6+i*8:offset+14+i*8],16) for i in range(13)]
-              size,ns=values[6],values[11]
-              name=rd[offset+110:offset+110+ns-1].decode(errors="replace")
-              start=align(offset+110+ns,4)
-              data=rd[start:start+size]
-              offset=align(start+size,4)
-              if name=="TRAILER!!!": break
-              while name.startswith("./"): name=name[2:]
-              entries[name]=(values[1],data)
-          check("RECOVERY_INIT_PRESENT","init" in entries)
-          check("RECOVERY_MAIN_PRESENT","system/bin/recovery" in entries)
-          check("RECOVERY_ADBD_PRESENT","system/bin/adbd" in entries)
-          check("RECOVERY_FSTAB_PRESENT","system/etc/recovery.fstab" in entries or "etc/recovery.fstab" in entries)
-          check("RECOVERY_POLICY_PRESENT",any(n.endswith("sepolicy") for n in entries))
-          check("FIRST_STAGE_FSTAB_PRESENT",any(n.startswith("first_stage_ramdisk/") and "fstab." in n for n in entries))
-          def elf_ok(data):
-              return data[:4]==b"\x7fELF" and data[4]==2 and struct.unpack_from("<H",data,18)[0]==183
-          def dependencies_ok(data):
-              if not elf_ok(data): return False
-              phoff=struct.unpack_from("<Q",data,32)[0]
-              es,count=struct.unpack_from("<HH",data,54)
-              programs=[struct.unpack_from("<IIQQQQQQ",data,phoff+i*es) for i in range(count)]
-              for p in programs:
-                  if p[0]==3 and data[p[2]:p[2]+p[5]].rstrip(b"\0").decode().lstrip("/") not in entries:
-                      return False
-              dynamic=[]
-              for p in programs:
-                  if p[0]==2:
-                      for off in range(p[2],p[2]+p[5],16):
-                          tag,val=struct.unpack_from("<qQ",data,off)
-                          if tag==0: break
-                          dynamic.append((tag,val))
-              addr=next((val for tag,val in dynamic if tag==5),None)
-              if addr is None: return True
-              for p in programs:
-                  if p[0]==1 and p[3]<=addr<p[3]+p[5]:
-                      st=p[2]+addr-p[3]
-                      needed=[data[st+val:].split(b"\0",1)[0].decode() for tag,val in dynamic if tag==1]
-                      return all(any(n.endswith("/"+lib) for n in entries) for lib in needed)
-              return False
-          for label,name in (("INIT","system/bin/init"),("MAIN","system/bin/recovery"),("ADBD","system/bin/adbd")):
-              data=entries.get(name,(0,b""))[1]
-              check("RECOVERY_"+label+"_ARM64_ELF",elf_ok(data))
-              check("RECOVERY_"+label+"_DEPENDENCIES",dependencies_ok(data))
-          root_init=entries.get("init",(0,b""))
-          if root_init[0]&0o170000==0o120000:
-              target=root_init[1].decode().lstrip("/")
-              root_init=entries.get(target,(0,b""))
-          check("ROOT_INIT_EXECUTABLE",elf_ok(root_init[1]) and bool(root_init[0]&0o111))
-          dtbo=pathlib.Path("/tmp/dtbo.img").read_bytes()
-          check("PIXEL3_DTBO_MAGIC",dtbo[:4]==b"\xd7\xb7\xab\x1e")
-          check("PIXEL3_DTBO_SIZE",len(dtbo)==8388608)
-          check("PIXEL3_DTBO_SDM845",b"sdm845" in dtbo)
-          vm=pathlib.Path("/tmp/vbmeta.img").read_bytes()
-          check("VBMETA_VALID_MAGIC",vm[:4]==b"AVB0")
-          check("VBMETA_BUILD_VERIFICATION_DISABLED",struct.unpack_from(">I",vm,120)[0]&3==3)
-          
+          from pathlib import Path
+          path = Path("/tmp/pixel3-kernel/arch/arm64/configs/b1c1_defconfig")
+          text = path.read_text()
+          assert text.count("CONFIG_SECURITY=y\n") == 1
+          assert "CONFIG_SECURITY_NETWORK=y" not in text
+          text = text.replace("CONFIG_SECURITY=y\n", "CONFIG_SECURITY=y\nCONFIG_SECURITY_NETWORK=y\n")
+          text = text.replace("CONFIG_SECURITY_SELINUX=y\n", "CONFIG_SECURITY_SELINUX=y\nCONFIG_DEFAULT_SECURITY_SELINUX=y\n")
+          path.write_text(text)
           PY
+          make -s -C /tmp/pixel3-kernel O=/tmp/pixel3-config-after ARCH=arm64 CC=clang HOSTCC=gcc b1c1_defconfig
+          python3 /tmp/pixel3-manifest/scripts/check-kernel-config.py /tmp/pixel3-config-after/.config
+          bash -n /tmp/pixel3-manifest/build.sh
+          python3 -m py_compile /tmp/pixel3-manifest/scripts/check-kernel-config.py
