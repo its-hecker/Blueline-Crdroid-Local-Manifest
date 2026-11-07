@@ -8,54 +8,50 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Inspect public ServerHive artifact index
+      - name: Prepare browser inspection
         shell: bash
         run: |
-          python3 - <<'PY'
+          python3 -m venv /tmp/blueline-inspect
+          /tmp/blueline-inspect/bin/pip install --quiet --disable-pip-version-check playwright
+      - name: Locate boot image in public build
+        shell: bash
+        run: |
+          /tmp/blueline-inspect/bin/python - <<'PY'
+          import json
           import re
-          import urllib.request
-          from urllib.parse import urljoin
-          from html.parser import HTMLParser
+          import shutil
+          from urllib.parse import urlsplit, urlunsplit
+          from playwright.sync_api import sync_playwright
           
           page_url = "https://artifacts.serverhive.in/?id=lineage-os-blueline-20261104-042657794437"
-          def read_url(url):
-              req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-              with urllib.request.urlopen(req, timeout=40) as response:
-                  body = response.read(3 * 1024 * 1024)
-                  print("RESPONSE", response.status, response.headers.get("Content-Type"), url)
-                  return body.decode("utf-8", errors="replace")
+          def display_url(value):
+              parts = urlsplit(value)
+              return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+          def on_response(response):
+              content_type = response.headers.get("content-type", "")
+              if "json" in content_type:
+                  try:
+                      body = response.text()
+                      print("JSON_RESPONSE", response.status, display_url(response.url), body[:65000], flush=True)
+                  except Exception as error:
+                      print("RESPONSE_ERROR", type(error).__name__, flush=True)
           
-          class Index(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.scripts = []
-                  self.links = []
-              def handle_starttag(self, tag, attrs):
-                  values = dict(attrs)
-                  if tag == "script" and values.get("src"):
-                      self.scripts.append(urljoin(page_url, values["src"]))
-                  if tag == "a" and values.get("href"):
-                      self.links.append(urljoin(page_url, values["href"]))
-          
-          html = read_url(page_url)
-          parser = Index()
-          parser.feed(html)
-          print("PAGE_HTML", html[:18000])
-          print("SCRIPT_URLS", parser.scripts)
-          print("LINK_URLS", parser.links)
-          for url in parser.scripts[:10]:
-              if not url.startswith("https://artifacts.serverhive.in/"):
-                  continue
-              content = read_url(url)
-              print("SCRIPT_START", url)
-              count = 0
-              for match in re.finditer(r"fetch\(|axios|/api/|download|\.json|serverhive|\.img", content, re.I):
-                  print("SNIPPET", content[max(0,match.start()-180):match.end()+300])
-                  count += 1
-                  if count >= 70:
-                      break
-              print("SCRIPT_END")
+          with sync_playwright() as p:
+              chrome = shutil.which("google-chrome") or shutil.which("chromium")
+              if not chrome:
+                  raise RuntimeError("The hosted runner has no Chrome executable")
+              browser = p.chromium.launch(headless=True, executable_path=chrome, args=["--disable-dev-shm-usage"])
+              context = browser.new_context(accept_downloads=False)
+              page = context.new_page()
+              page.on("response", on_response)
+              page.on("pageerror", lambda error: print("PAGE_ERROR", str(error)[:1500], flush=True))
+              page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+              page.wait_for_timeout(12000)
+              print("PAGE_TEXT", page.locator("body").inner_text()[:50000], flush=True)
+              print("ANCHORS", json.dumps(page.locator("a").evaluate_all("(els) => els.map(e => ({text:e.innerText, href:e.href}))"))[:50000], flush=True)
+              print("BUTTONS", page.locator("button").all_inner_texts(), flush=True)
+              browser.close()
           
           PY
