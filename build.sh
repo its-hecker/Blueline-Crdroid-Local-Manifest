@@ -71,10 +71,11 @@ echo "Build log: $BUILD_LOG"
     # Validate the resolved Kconfig before compiling or packaging the kernel.
     m kernelconfig
     python3 "$SCRIPT_DIR/scripts/check-kernel-config.py" "$ANDROID_PRODUCT_OUT/obj/KERNEL_OBJ/.config"
+    # Build the regular OTA and the full retrofit OTA for first installs.
     if [[ -n ${LINEAGE_BUILD_JOBS:-} ]]; then
-        m bacon "-j${LINEAGE_BUILD_JOBS}"
+        m bacon otardppackage "-j${LINEAGE_BUILD_JOBS}"
     else
         # Let Android choose its default parallelism; no fixed -j8 cap.
-        m bacon
+        m bacon otardppackage
     fi
 ) 2>&1 | tee "$BUILD_LOG"

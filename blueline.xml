@@ -6,7 +6,7 @@
 <manifest>
   <remote name="pixel3" fetch="https://github.com/" />
 
-  <project name="its-hecker/android_device_google_crosshatch" path="device/google/crosshatch" remote="pixel3" revision="lineage-24.0" />
+  <project name="its-hecker/android_device_google_crosshatch" path="device/google/crosshatch" remote="pixel3" revision="285aa2628aacb361c175995210a7378fae9cbdd6" upstream="refs/heads/fix/blueline-boot-20261113" />
   <project name="its-hecker/android_kernel_google_msm-4.9" path="kernel/google/msm-4.9" remote="pixel3" revision="lineage-24.0" />
   <project name="its-hecker/proprietary_vendor_google_blueline" path="vendor/google/blueline" remote="pixel3" revision="lineage-24.0" />
   <project name="LineageOS/android_packages_apps_ElmyraService" path="packages/apps/ElmyraService" remote="pixel3" revision="lineage-24.0" />
