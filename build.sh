@@ -61,21 +61,23 @@ fi
 # Reuse ServerHive's existing RBE configuration and credentials.
 export USE_RBE=true
 export LINEAGE_BUILDTYPE=UNOFFICIAL
+LINEAGE_BUILD_VARIANT=${LINEAGE_BUILD_VARIANT:-eng}
+case "$LINEAGE_BUILD_VARIANT" in eng|userdebug) ;; *) echo "Use eng or userdebug for diagnostics" >&2; exit 2 ;; esac
 mkdir -p out/build-logs
 BUILD_LOG="$TOP/out/build-logs/lineage-blueline-$(date -u +%Y%m%d-%H%M%S).log"
 echo "Build log: $BUILD_LOG"
 (
     # Android's envsetup scripts are not compatible with nounset.
     source build/envsetup.sh
-    lunch lineage_blueline cp2a userdebug
+    lunch lineage_blueline cp2a "$LINEAGE_BUILD_VARIANT"
     # Validate the resolved Kconfig before compiling or packaging the kernel.
     m kernelconfig
     python3 "$SCRIPT_DIR/scripts/check-kernel-config.py" "$ANDROID_PRODUCT_OUT/obj/KERNEL_OBJ/.config"
-    # Build the regular OTA and the full retrofit OTA for first installs.
     if [[ -n ${LINEAGE_BUILD_JOBS:-} ]]; then
-        m bacon otardppackage "-j${LINEAGE_BUILD_JOBS}"
+        m bacon "-j${LINEAGE_BUILD_JOBS}"
     else
         # Let Android choose its default parallelism; no fixed -j8 cap.
-        m bacon otardppackage
+        m bacon
     fi
+
 ) 2>&1 | tee "$BUILD_LOG"
