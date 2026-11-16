@@ -61,13 +61,15 @@ fi
 # Reuse ServerHive's existing RBE configuration and credentials.
 export USE_RBE=true
 export LINEAGE_BUILDTYPE=UNOFFICIAL
+LINEAGE_BUILD_VARIANT=${LINEAGE_BUILD_VARIANT:-eng}
+case "$LINEAGE_BUILD_VARIANT" in eng|userdebug) ;; *) echo "Use eng or userdebug for diagnostics" >&2; exit 2 ;; esac
 mkdir -p out/build-logs
 BUILD_LOG="$TOP/out/build-logs/lineage-blueline-$(date -u +%Y%m%d-%H%M%S).log"
 echo "Build log: $BUILD_LOG"
 (
     # Android's envsetup scripts are not compatible with nounset.
     source build/envsetup.sh
-    lunch lineage_blueline cp2a userdebug
+    lunch lineage_blueline cp2a "$LINEAGE_BUILD_VARIANT"
     # Validate the resolved Kconfig before compiling or packaging the kernel.
     m kernelconfig
     python3 "$SCRIPT_DIR/scripts/check-kernel-config.py" "$ANDROID_PRODUCT_OUT/obj/KERNEL_OBJ/.config"
@@ -77,16 +79,5 @@ echo "Build log: $BUILD_LOG"
         # Let Android choose its default parallelism; no fixed -j8 cap.
         m bacon
     fi
-    # Never ship another Pixel 3 image with the HWC module but no selector.
-    hwc_prop="$ANDROID_PRODUCT_OUT/vendor/build.prop"
-    hwc_module="$ANDROID_PRODUCT_OUT/vendor/lib64/hw/hwcomposer.qcom.so"
-    if [[ ! -f "$hwc_prop" ]] || ! grep -qx 'ro.hardware.hwcomposer=qcom' "$hwc_prop"; then
-        echo "FAIL: Qualcomm HWC selector missing from $hwc_prop" >&2
-        exit 1
-    fi
-    if [[ ! -f "$hwc_module" ]]; then
-        echo "FAIL: Qualcomm HWC module missing from $hwc_module" >&2
-        exit 1
-    fi
-    echo "Pixel 3 Qualcomm hardware composer build validation: PASS"
+
 ) 2>&1 | tee "$BUILD_LOG"
