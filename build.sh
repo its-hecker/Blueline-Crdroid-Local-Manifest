@@ -24,6 +24,8 @@ required=(
     device/google/crosshatch/blueline/extract-files.py
     vendor/google/blueline/blueline-vendor.mk
     kernel/google/msm-4.9/Makefile
+    kernel/google/msm-4.9/.gitmodules
+    kernel/google/msm-4.9/arch/arm64/configs/b1c1_defconfig
     hardware/qcom/audio/Android.bp
     hardware/qcom/sdm845/display/Android.bp
     hardware/qcom/sdm845/gps/Android.bp
@@ -52,10 +54,38 @@ if [[ -n ${LINEAGE_BUILD_JOBS:-} && ! ${LINEAGE_BUILD_JOBS} =~ ^[1-9][0-9]*$ ]];
     echo "LINEAGE_BUILD_JOBS must be a positive integer, or unset for default jobs." >&2
     exit 2
 fi
+# Preflight confirms KSU is wired into this kernel's config and source tree.
+for setting in CONFIG_KSU=y CONFIG_KSU_MANUAL_HOOK=y; do
+    if ! grep -Fqx "$setting" kernel/google/msm-4.9/arch/arm64/configs/b1c1_defconfig; then
+        echo "KernelSU Next setting missing from b1c1_defconfig: $setting" >&2
+        exit 1
+    fi
+done
+if [[ ! -L kernel/google/msm-4.9/drivers/kernelsu ]]; then
+    echo "KernelSU driver link missing (must point into the pinned submodule)" >&2
+    exit 1
+fi
 if [[ "$MODE" == --check ]]; then
     echo "Pixel 3 source and tool paths are present. No compilation or hardware test was run."
     exit 0
 fi
+
+# Mirror the pinned KernelSU Next submodule integration from Infinity-X.
+# Do not fetch a moving branch head or install SUSFS.
+KSU_NEXT_PIN=54100bd88fcbb3f2cc420a60c2f7a402b522e806
+echo "Initializing pinned KernelSU Next submodule for Pixel 3 (no SUSFS)"
+git -C kernel/google/msm-4.9 submodule sync -- KernelSU
+git -C kernel/google/msm-4.9 submodule update --init -- KernelSU
+test -f kernel/google/msm-4.9/drivers/kernelsu/Kconfig || {
+    echo "KernelSU Next driver symlink or submodule is missing" >&2
+    exit 1
+}
+actual_ksu=$(git -C kernel/google/msm-4.9/KernelSU rev-parse HEAD)
+if [[ "$actual_ksu" != "$KSU_NEXT_PIN" ]]; then
+    echo "Unexpected KernelSU Next revision: $actual_ksu (expected $KSU_NEXT_PIN)" >&2
+    exit 1
+fi
+echo "KernelSU Next pinned revision: $actual_ksu"
 
 python3 "$SCRIPT_DIR/scripts/prepare-vendor.py" "$TOP"
 # The Pixel 3 kernel cannot mount the Android 17 GMS EROFS APEX. Prepare
