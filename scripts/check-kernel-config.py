@@ -24,10 +24,12 @@ def main():
         "CONFIG_SECURITY_SELINUX": "y",
         "CONFIG_DEFAULT_SECURITY_SELINUX": "y",
         "CONFIG_DEFAULT_SECURITY": '"selinux"',
+        "CONFIG_KSU": "y",
+        "CONFIG_KSU_MANUAL_HOOK": "y",
     }
     missing = [f"{name}={value}" for name, value in required.items() if values.get(name) != value]
     if missing:
-        print("Pixel 3 kernel cannot start Android recovery. Required settings:", file=sys.stderr)
+        print("Pixel 3 kernel cannot start Android recovery or load KernelSU Next. Required settings:", file=sys.stderr)
         for setting in missing:
             print(f"  {setting}", file=sys.stderr)
         print(
@@ -37,7 +39,7 @@ def main():
         )
         return 1
 
-    print("Pixel 3 generated kernel config: SELinux and its networking hooks are enabled.")
+    print("Pixel 3 generated kernel config: SELinux, networking and KernelSU Next manual hooks are enabled.")
     return 0
 
 
