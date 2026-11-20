@@ -7,7 +7,8 @@
   <remote name="pixel3" fetch="https://github.com/" />
 
   <project name="its-hecker/android_device_google_crosshatch" path="device/google/crosshatch" remote="pixel3" revision="60cde66442e41157596a53eaa05dd93cacfeea20" upstream="refs/heads/feat/blueline-core-gapps" />
-  <project name="its-hecker/android_kernel_google_msm-4.9" path="kernel/google/msm-4.9" remote="pixel3" revision="484dddd90e130900b4f0cf0ccb5b148b263f7fb4" upstream="refs/heads/lineage-24.0" />
+  <!-- Separate Linux 4.9 KernelSU Next manual-hook branch; no SUSFS. -->
+  <project name="its-hecker/android_kernel_google_msm-4.9" path="kernel/google/msm-4.9" remote="pixel3" revision="ce0266055745ec44b2d944aede7f162e1b538b64" upstream="refs/heads/feat/blueline-ksun-next" />
   <project name="its-hecker/proprietary_vendor_google_blueline" path="vendor/google/blueline" remote="pixel3" revision="lineage-24.0" />
   <project name="LineageOS/android_packages_apps_ElmyraService" path="packages/apps/ElmyraService" remote="pixel3" revision="lineage-24.0" />
 
