@@ -1,10 +1,33 @@
-# LineageOS 24.0 / Android 17 — Pixel 3 Core GApps
+# LineageOS 24.0 / Android 17 — Pixel 3 Core GApps + KernelSU Next
 
-**Experimental branch:** `feat/blueline-core-gapps`
+**Experimental branch:** `feat/blueline-core-gapps-ksun`
 
-This is a **separate** GApps-included build of the working vanilla Pixel 3
-(blueline) LineageOS 24.0 source. The original `main` local manifest and
-`lineage-24.0` device branch remain unchanged.
+This is a **separate** Core GApps + KernelSU Next build of the working vanilla Pixel 3
+(blueline) LineageOS 24.0 source. The original `main` local manifest,
+`lineage-24.0` kernel branch, and Core GApps-only branch remain unchanged.
+
+## KernelSU Next
+
+The dedicated kernel branch `feat/blueline-ksun-next` starts from the same
+pinned LineageOS 24.0 Pixel 3 Linux 4.9 commit used by the known-good ROM.
+It ports the **same non-GKI manual hooks** used by Infinity-X blueline:
+
+- `CONFIG_KSU=y` and `CONFIG_KSU_MANUAL_HOOK=y` in `b1c1_defconfig`.
+- Kconfig/Makefile integration under `drivers/kernelsu`.
+- Manual syscall, reboot, file, stat, read, UID and input hooks.
+- A real Git submodule at `KernelSU`, pinned to commit
+  `54100bd88fcbb3f2cc420a60c2f7a402b522e806` from
+  `its-hecker/KernelSU-Next` (`legacy_blueline_4.9`).
+- **No SUSFS.** SELinux and the existing Android 17 legacy compatibility pins
+  are preserved.
+
+`build.sh` initializes the pinned submodule before vendor and GApps
+preparation. It verifies that its revision matches the expected commit,
+that `drivers/kernelsu/Kconfig` exists, and that the generated kernel config
+contains both required KSU settings in addition to SELinux.
+The KernelSU manager APK is **not** bundled into the ROM; install a compatible
+manager after testing the ROM if desired. A successful build does not imply
+that root works until verified on-device.
 
 ## What's included
 
@@ -54,7 +77,7 @@ cd ~/lineageos-blueline-gapps
 repo init -u https://github.com/LineageOS/android.git \
   -b lineage-24.0 --git-lfs --no-clone-bundle
 
-git clone --branch feat/blueline-core-gapps \
+git clone --branch feat/blueline-core-gapps-ksun \
   https://github.com/its-hecker/Blueline-lineagecnb-Local-Manifest.git \
   .repo/local_manifests
 
@@ -78,9 +101,9 @@ If you prefer to reuse an existing LineageOS checkout, make sure
 
 ```bash
 cd ~/lineageos-blueline
-git -C .repo/local_manifests fetch origin feat/blueline-core-gapps
-git -C .repo/local_manifests switch -c feat/blueline-core-gapps \
-  --track origin/feat/blueline-core-gapps
+git -C .repo/local_manifests fetch origin feat/blueline-core-gapps-ksun
+git -C .repo/local_manifests switch -c feat/blueline-core-gapps-ksun \
+  --track origin/feat/blueline-core-gapps-ksun
 
 repo sync -c --fail-fast --no-clone-bundle --no-tags
 
@@ -90,8 +113,8 @@ USE_RBE=true \
 bash .repo/local_manifests/build.sh
 ```
 
-The new branch pins the GApps-only device-tree revision while retaining
-the previous kernel and platform compatibility pins.
+The new branch pins the GApps-only device-tree revision and the dedicated
+KernelSU Next kernel revision. It retains all other legacy-platform compatibility pins.
 
 ## Quick checks
 
@@ -107,7 +130,18 @@ Prepare the vendor blobs and extract core GApps without compiling:
 bash .repo/local_manifests/build.sh --prepare-only
 ```
 
-After a build, verify that these are present in the output:
+After a build, verify that the pinned KernelSU module source and expected
+GApps packages are present:
+
+```bash
+git -C kernel/google/msm-4.9/KernelSU rev-parse HEAD
+grep '^CONFIG_KSU' out/target/product/blueline/obj/KERNEL_OBJ/.config
+```
+
+The SHA must be `54100bd88fcbb3f2cc420a60c2f7a402b522e806`; the generated
+config must show both `CONFIG_KSU=y` and `CONFIG_KSU_MANUAL_HOOK=y`.
+
+Then verify these ROM packages:
 
 ```bash
 test -f out/target/product/blueline/product/priv-app/HeckerGmsCoreCompat/HeckerGmsCoreCompat.apk
@@ -116,7 +150,7 @@ test ! -f out/target/product/blueline/product/apex/com.google.android.gmssystem.
 ```
 
 After flashing and booting the test ROM, verify that Android recognizes
-all three packages and that Google account login and Play Store work:
+all three Google packages and that Google account login and Play Store work:
 
 ```bash
 adb shell pm path com.google.android.gms
@@ -124,20 +158,23 @@ adb shell pm path com.google.android.gsf
 adb shell pm path com.android.vending
 ```
 
-A successful build is **not** proof that Google sign-in works. Back up
+A successful build is **not** proof that Google sign-in or KernelSU root works. Back up
 important data before testing; changing between vanilla and GApps builds can
 require a clean installation depending on prior Google package state.
 
 ## Source branches
 
-- This local manifest: `feat/blueline-core-gapps`
+- This local manifest: `feat/blueline-core-gapps-ksun`
 - Device tree: `its-hecker/android_device_google_crosshatch`,
   `feat/blueline-core-gapps` (pinned in `blueline.xml`)
 - Vanilla local manifest: `main`, unchanged
+- GApps-only local manifest: `feat/blueline-core-gapps`, unchanged
 - Vanilla device tree: `lineage-24.0`, unchanged
-- Kernel: existing pinned `lineage-24.0` Linux 4.9 kernel; no new kernel patch
+- Kernel: `its-hecker/android_kernel_google_msm-4.9`,
+  `feat/blueline-ksun-next` (pinned in `blueline.xml`)
 - Pixel 3 vendor: existing `lineage-24.0` branch
 - GApps source: `MindTheGapps/vendor_gapps`, `cinnamonbun`
 
-Credits: LineageOS, MindTheGapps, Pixel device contributors and the
-legacy-4.9 Android 17 compatibility work by xbill9.
+Credits: LineageOS, MindTheGapps, KernelSU Next, the Infinity-X blueline
+integration work, Pixel device contributors and the legacy-4.9 Android 17
+compatibility work by xbill9.
