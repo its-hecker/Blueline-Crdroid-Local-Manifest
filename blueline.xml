@@ -6,10 +6,14 @@
 <manifest>
   <remote name="pixel3" fetch="https://github.com/" />
 
-  <project name="its-hecker/android_device_google_crosshatch" path="device/google/crosshatch" remote="pixel3" revision="f30f51da5b8f9a50d031f409b96b5d4a2eb35d68" upstream="refs/heads/lineage-24.0" />
+  <project name="its-hecker/android_device_google_crosshatch" path="device/google/crosshatch" remote="pixel3" revision="60cde66442e41157596a53eaa05dd93cacfeea20" upstream="refs/heads/feat/blueline-core-gapps" />
   <project name="its-hecker/android_kernel_google_msm-4.9" path="kernel/google/msm-4.9" remote="pixel3" revision="484dddd90e130900b4f0cf0ccb5b148b263f7fb4" upstream="refs/heads/lineage-24.0" />
   <project name="its-hecker/proprietary_vendor_google_blueline" path="vendor/google/blueline" remote="pixel3" revision="lineage-24.0" />
   <project name="LineageOS/android_packages_apps_ElmyraService" path="packages/apps/ElmyraService" remote="pixel3" revision="lineage-24.0" />
+
+  <!-- Core GApps on experimental branch only; GMS APEX is extracted to APK
+       by prepare-gapps.py because the device kernel has no EROFS support. -->
+  <project name="MindTheGapps/vendor_gapps" path="vendor/gapps" remote="pixel3" revision="cinnamonbun" />
 
   <!-- Legacy Qualcomm implementations removed from the Android 17 manifest. -->
   <project name="xbill9/android_hardware_qcom_sdm845_display" path="hardware/qcom/sdm845/display" remote="pixel3" revision="299e03ac43b03a433346ec7d13fb3444f1f2d57d" upstream="refs/heads/lineage-24.0" groups="qcom,qcom_sdm845" />
