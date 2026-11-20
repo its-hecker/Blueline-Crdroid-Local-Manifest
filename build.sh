@@ -72,7 +72,7 @@ fi
 
 # Mirror the pinned KernelSU Next submodule integration from Infinity-X.
 # Do not fetch a moving branch head or install SUSFS.
-KSU_NEXT_PIN=54100bd88fcbb3f2cc420a60c2f7a402b522e806
+KSU_NEXT_PIN=23e2cb70ba728af4fb50f2203fcb34c098023188
 echo "Initializing pinned KernelSU Next submodule for Pixel 3 (no SUSFS)"
 git -C kernel/google/msm-4.9 submodule sync -- KernelSU
 git -C kernel/google/msm-4.9 submodule update --init -- KernelSU
