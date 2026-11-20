@@ -32,6 +32,10 @@ required=(
     prebuilts/clang/kernel/linux-x86/clang-r416183b/bin/clang
     prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-ld.gold
     prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-ld
+    vendor/gapps/arm64/arm64-vendor.mk
+    vendor/gapps/common/common-vendor.mk
+    device/google/crosshatch/blueline/gapps/core-gapps.mk
+    device/google/crosshatch/blueline/gapps/Android.bp
 )
 missing=0
 for path in "${required[@]}"; do
@@ -54,6 +58,9 @@ if [[ "$MODE" == --check ]]; then
 fi
 
 python3 "$SCRIPT_DIR/scripts/prepare-vendor.py" "$TOP"
+# The Pixel 3 kernel cannot mount the Android 17 GMS EROFS APEX. Prepare
+# its original signed APK and permission declarations before lunch/Soong.
+python3 "$SCRIPT_DIR/scripts/prepare-gapps.py" "$TOP"
 if [[ "$MODE" == --prepare-only ]]; then
     exit 0
 fi
