@@ -1,147 +1,143 @@
-# LineageOS 24.0 / Android 17 — Pixel 3 (blueline)
+# LineageOS 24.0 / Android 17 — Pixel 3 Core GApps
 
-Unofficial, vanilla Android 17 development target for **Google Pixel 3**.
-The existing repository URL retains its old crDroid name; its `main` branch now
-contains the LineageOS configuration.
+**Experimental branch:** `feat/blueline-core-gapps`
 
-**Status:** a full ROM build is available, but the 4 November image hangs before
-recovery. Inspection confirmed that its compiled kernel lacks SELinux. The
-recovery fix below restores the missing dependency; a rebuilt image and a
-successful phone boot still need verification. The Pixel 3 remains officially on
-LineageOS 22.2; this is an independent port.
+This is a **separate** GApps-included build of the working vanilla Pixel 3
+(blueline) LineageOS 24.0 source. The original `main` local manifest and
+`lineage-24.0` device branch remain unchanged.
 
-## Fresh build from mkdir — default jobs, RBE enabled
+## What's included
 
-Use a new source directory to avoid mixing a crDroid source checkout with
-LineageOS. On ServerHive, use its existing Android build dependencies and RBE
-configuration. Install Git LFS before syncing; the vendor radio images use it.
+- Google Play Store (`Phonesky`)
+- Google Play Services (original signed `PrebuiltGmsCoreVic` APK, repackaged
+  as a privileged /product app)
+- Google Services Framework
+- Google Partner Setup
+- Google contacts and calendar sync adapters
+- Matching Google permissions, sysconfig and initialization metadata
+
+**Not included:** Google Assistant/Search, Pixel Launcher, Gmail, Maps,
+YouTube, Chrome, Google Setup Wizard, Android Auto, Wellbeing, TalkBack,
+Speech Services, or the Google Restore app. Install optional apps from
+Play Store yourself.
+
+## Why it uses an extracted APK
+
+MindTheGapps' Android 17 `cinnamonbun` arm64 source ships Google Play
+Services inside `com.google.android.gmssystem.prodvic.apex`, whose payload is
+EROFS. The Pixel 3 uses a Linux 4.9 kernel without EROFS mounting, so the
+ordinary APEX cannot run even if a GApps ZIP appears to sideload correctly.
+
+The build helper uses `fsck.erofs` on the **build host** to extract the
+**same signed Google Play Services APK** and its XML declarations. It then
+installs them on /product. The original APEX module is deliberately **not**
+included. This follows the compatibility approach used for another legacy
+4.9 Pixel port. The APK and extracted blobs are generated locally, ignored
+by Git, and **not** committed or stored in the repositories.
+
+The Google package sources come from
+`MindTheGapps/vendor_gapps` (branch `cinnamonbun`).
+Only selected core modules are included; we never inherit its full
+`arm64-vendor.mk`.
+
+## Fresh build on ServerHive
+
+Use a separate checkout to retain your known-good vanilla build. On
+Ubuntu, ensure that `fsck.erofs` is available (for example, from
+`sudo apt-get install erofs-utils`), or provide
+`GAPPS_FSCK_EROFS=/path/to/fsck.erofs`.
 
 ```bash
-mkdir -p ~/lineageos-blueline &&
-cd ~/lineageos-blueline &&
-repo init -u https://github.com/LineageOS/android.git -b lineage-24.0 --git-lfs --no-clone-bundle &&
-git clone --branch main https://github.com/its-hecker/Blueline-Crdroid-Local-Manifest.git .repo/local_manifests &&
-repo sync -c --fail-fast --no-clone-bundle --no-tags &&
-env -u HECKER_BUILD_JOBS -u BUILD_JOBS -u LINEAGE_BUILD_JOBS USE_RBE=true bash .repo/local_manifests/build.sh
+mkdir -p ~/lineageos-blueline-gapps
+cd ~/lineageos-blueline-gapps
+
+repo init -u https://github.com/LineageOS/android.git \
+  -b lineage-24.0 --git-lfs --no-clone-bundle
+
+git clone --branch feat/blueline-core-gapps \
+  https://github.com/its-hecker/Blueline-lineagecnb-Local-Manifest.git \
+  .repo/local_manifests
+
+repo sync -c --fail-fast --no-clone-bundle --no-tags
+
+LINEAGE_BUILD_VARIANT=userdebug \
+PIXEL3_DEV_USB_ADB=true \
+USE_RBE=true \
+bash .repo/local_manifests/build.sh
 ```
 
-The default command passes **no fixed job count** to Android's build system.
-It does not use `-j8`. `USE_RBE=true` reuses the server's RBE setup; this
-repository does not create credentials or configure an RBE service.
+The helper handles vendor blob preparation, GMS APEX extraction, the existing
+kernel configuration check and `m bacon`. It has no fixed `-j` limit.
+A packaged build is expected in `out/target/product/blueline/`; logs are
+written to `out/build-logs/`. Building does not flash the phone.
 
-## Subsequent builds
+## Existing vanilla checkout: switch only if you intend to test GApps
 
-From `~/lineageos-blueline`:
+If you prefer to reuse an existing LineageOS checkout, make sure
+`.repo/local_manifests` has no uncommitted edits before switching:
 
 ```bash
-git -C .repo/local_manifests pull --ff-only origin main &&
-repo sync -c --fail-fast --no-clone-bundle --no-tags &&
-env -u HECKER_BUILD_JOBS -u BUILD_JOBS -u LINEAGE_BUILD_JOBS USE_RBE=true bash .repo/local_manifests/build.sh
+cd ~/lineageos-blueline
+git -C .repo/local_manifests fetch origin feat/blueline-core-gapps
+git -C .repo/local_manifests switch -c feat/blueline-core-gapps \
+  --track origin/feat/blueline-core-gapps
+
+repo sync -c --fail-fast --no-clone-bundle --no-tags
+
+LINEAGE_BUILD_VARIANT=userdebug \
+PIXEL3_DEV_USB_ADB=true \
+USE_RBE=true \
+bash .repo/local_manifests/build.sh
 ```
 
-The helper checks source/tool paths, prepares vendor blobs, runs
-`lunch lineage_blueline cp2a userdebug`, and builds with `m bacon`.
-Build output is in `out/target/product/blueline/`; logs are in `out/build-logs/`.
-It never flashes a connected phone.
+The new branch pins the GApps-only device-tree revision while retaining
+the previous kernel and platform compatibility pins.
 
-For a source/tool presence check only:
+## Quick checks
+
+Check sources without building:
 
 ```bash
 bash .repo/local_manifests/build.sh --check
 ```
 
-To prepare the vendor files without starting a build:
+Prepare the vendor blobs and extract core GApps without compiling:
 
 ```bash
 bash .repo/local_manifests/build.sh --prepare-only
 ```
 
-## Recovery fix — 8 November 2026
-
-The 4 November boot image matches ServerHive's published checksum but its
-embedded kernel configuration has no SELinux support. Disabling the unused
-Smack LSM also removed its implicit selection of `SECURITY_NETWORK`, a dependency
-of SELinux. Kconfig silently dropped `SECURITY_SELINUX=y`, so init cannot mount
-selinuxfs and start recovery.
-
-The kernel's `lineage-24.0` branch now selects `SECURITY_NETWORK` and the SELinux
-default explicitly. The build helper runs `m kernelconfig` and checks the
-generated configuration before compiling the ROM.
-
-For the first rebuild after this fix, clear only the generated kernel and
-device-tree outputs, then build the complete package so its kernel modules match:
+After a build, verify that these are present in the output:
 
 ```bash
-cd ~/lineageos-blueline &&
-git -C .repo/local_manifests pull --ff-only origin main &&
-repo sync -c --fail-fast --no-clone-bundle --no-tags &&
-rm -rf out/target/product/blueline/obj/KERNEL_OBJ out/target/product/blueline/obj/DTB_OBJ out/target/product/blueline/obj/DTBO_OBJ &&
-rm -f out/target/product/blueline/kernel out/target/product/blueline/boot.img out/target/product/blueline/dtb.img out/target/product/blueline/dtbo.img &&
-env -u HECKER_BUILD_JOBS -u BUILD_JOBS -u LINEAGE_BUILD_JOBS PIXEL3_DEV_USB_ADB=true USE_RBE=true bash .repo/local_manifests/build.sh
+test -f out/target/product/blueline/product/priv-app/HeckerGmsCoreCompat/HeckerGmsCoreCompat.apk
+test -f out/target/product/blueline/product/priv-app/Phonesky/Phonesky.apk
+test ! -f out/target/product/blueline/product/apex/com.google.android.gmssystem.prodvic.apex
 ```
 
-Use the newly produced `boot.img` from `out/target/product/blueline/`; the
-4 November download is still the old image. In bootloader mode, flash that new
-image with `fastboot flash boot boot.img`, then select **Recovery Mode**.
-A source/configuration check is not a successful phone boot test.
-
-## Explicit 8-job command
-
-This optional command uses **8 jobs**, and should only be used on a server
-where that job setting is allowed. Use the default command on ServerHive.
+After flashing and booting the test ROM, verify that Android recognizes
+all three packages and that Google account login and Play Store work:
 
 ```bash
-USE_RBE=true LINEAGE_BUILD_JOBS=8 bash .repo/local_manifests/build.sh
+adb shell pm path com.google.android.gms
+adb shell pm path com.google.android.gsf
+adb shell pm path com.android.vending
 ```
 
-## Sources and compatibility
+A successful build is **not** proof that Google sign-in works. Back up
+important data before testing; changing between vanilla and GApps builds can
+require a clean installation depending on prior Google package state.
 
-| Purpose | Repository | Revision |
-| --- | --- | --- |
-| Android platform | `LineageOS/android` | `lineage-24.0` |
-| Pixel 3 device and shared configuration | `its-hecker/android_device_google_crosshatch` | `lineage-24.0` |
-| Pixel 3 vendor blobs | `its-hecker/proprietary_vendor_google_blueline` | `lineage-24.0` |
-| Linux 4.9 with eBPF backports | `its-hecker/android_kernel_google_msm-4.9` | `lineage-24.0` |
-| Active Edge service | `LineageOS/android_packages_apps_ElmyraService` | `lineage-24.0` |
-| Legacy SDM845 display | `xbill9/android_hardware_qcom_sdm845_display` | pinned Android 17 commit |
-| Legacy SDM845 GPS | `LineageOS/android_hardware_qcom_sdm845_gps` | pinned `lineage-23.2` commit |
-| Legacy Qualcomm audio | `xbill9/android_hardware_qcom_audio` | pinned `lineage-23.2` commit |
-| Legacy kernel binutils | LineageOS GCC 4.9 prebuilt repositories | pinned `lineage-19.1` commits |
-| fscrypt, BPF, connectivity and app zygote compatibility | xbill9 platform forks | pinned Android 17 commits |
+## Source branches
 
-`blueline.xml` contains the exact compatibility commit pins. LineageOS supplies
-kernel clang r416183b itself. Its normal Rust and host-clang projects are retained
-in the source manifest.
+- This local manifest: `feat/blueline-core-gapps`
+- Device tree: `its-hecker/android_device_google_crosshatch`,
+  `feat/blueline-core-gapps` (pinned in `blueline.xml`)
+- Vanilla local manifest: `main`, unchanged
+- Vanilla device tree: `lineage-24.0`, unchanged
+- Kernel: existing pinned `lineage-24.0` Linux 4.9 kernel; no new kernel patch
+- Pixel 3 vendor: existing `lineage-24.0` branch
+- GApps source: `MindTheGapps/vendor_gapps`, `cinnamonbun`
 
-The `crosshatch` repository is shared by Pixel 3 and Pixel 3 XL and already
-defines `lineage_blueline`. This manifest uses the Pixel 3 vendor only. It does
-not sync Pixel 3a/bonito device configurations or use Pixel 4 device/kernel sources.
-
-The dedicated LineageOS device and kernel branches preserve the Android 17 work
-from the earlier `crdroid-17.0` branches. The vendor branch starts from the existing
-Pixel 3 blobs on `lineage-22.2`; `scripts/prepare-vendor.py` applies the device
-tree's extraction fixups locally, then regenerates vendor build definitions.
-This includes camera XML-library compatibility, fingerprint stats-interface
-names and the Secure UI shim. Running the helper again is supported. These
-generated changes will appear in the vendor checkout's Git status; keep any
-personal vendor edits committed separately before updating source branches.
-
-The initial target has no bundled GApps, keeps the existing physical partition
-sizes and ext4 retrofit layout, and retains encryption, thermal protection and
-SELinux enforcing from the device preparation. Android 17 kernel-version OTA
-checks are disabled for the backported 4.9 kernel; HAL compatibility checking
-is retained. These settings still require build and phone validation.
-
-## First device validation
-
-After a successful server build, test boot and SELinux state, calls and mobile
-data, Wi-Fi and Bluetooth, both cameras, fingerprint, encryption/unlock,
-charging/temperature and suspend. A successful source check or ZIP build alone
-does not establish that these work on Pixel 3.
-
-## Credits
-
-LineageOS and the Pixel device maintainers provide the base device and vendor
-sources. xbill9's Android 17 work on the related Pixel 3a family supplies the
-legacy-kernel platform compatibility approach and shared Qualcomm components.
-Their Pixel 3a boot results are not Pixel 3 validation.
+Credits: LineageOS, MindTheGapps, Pixel device contributors and the
+legacy-4.9 Android 17 compatibility work by xbill9.
