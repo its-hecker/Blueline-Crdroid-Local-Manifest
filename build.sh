@@ -87,4 +87,18 @@ echo "Build log: $BUILD_LOG"
         m bacon
     fi
 
+    # Catch the exact regression reported by the November 21 boot logs.
+    # HWC 2.3 must find hwcomposer.qcom.so, selected by the vendor property.
+    hwc_module="$ANDROID_PRODUCT_OUT/vendor/lib64/hw/hwcomposer.qcom.so"
+    vendor_props="$ANDROID_PRODUCT_OUT/vendor/build.prop"
+    if [[ ! -s "$hwc_module" ]]; then
+        echo "FATAL: Qualcomm hardware composer is missing: $hwc_module" >&2
+        exit 1
+    fi
+    if [[ ! -f "$vendor_props" ]] || ! grep -qx 'ro.hardware.hwcomposer=qcom' "$vendor_props"; then
+        echo "FATAL: ro.hardware.hwcomposer=qcom is missing from $vendor_props" >&2
+        exit 1
+    fi
+    echo "Verified: Qualcomm HWC module installed and selected in vendor/build.prop"
+
 ) 2>&1 | tee "$BUILD_LOG"
